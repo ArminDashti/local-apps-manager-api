@@ -1,0 +1,4 @@
+bin/
+.env
+.armin/docker-data/
+*.exe

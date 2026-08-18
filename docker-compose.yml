@@ -1,0 +1,24 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: local-apps-postgres
+    environment:
+      POSTGRES_USER: localapps
+      POSTGRES_PASSWORD: localapps
+      POSTGRES_DB: localapps
+    ports:
+      - "5455:5432"
+    volumes:
+      - ./.armin/docker-data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U localapps -d localapps"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - default
+
+networks:
+  default:
+    name: t3-net
+    external: true
