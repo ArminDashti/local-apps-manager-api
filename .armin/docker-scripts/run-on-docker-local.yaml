@@ -1,0 +1,10 @@
+# Local deploy settings — scripts read this file only (no CLI -- flags).
+stack_name: local-app-manager
+image_tag: pc-armin/local-app-manager-api:latest
+compose_file: ../../docker-compose.prod.yml
+dockerfile: ../../dockerfile
+docker_network: t3-net
+internal_port: "8195"
+publish_port: ""
+delete_volume: "no"
+delete_image: "yes"

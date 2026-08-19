@@ -5,6 +5,7 @@ import (
 	"embed"
 	"errors"
 
+	"github.com/ArminDashti/local-apps-manager-api/internal/runmode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -22,6 +23,12 @@ type User struct {
 	ID           int64
 	Username     string
 	PasswordHash string
+}
+
+type AppPreference struct {
+	LocalEnabled   bool
+	DockerEnabled  bool
+	PublicEnabled  bool
 }
 
 func Connect(ctx context.Context, databaseURL string) (*Store, error) {
@@ -48,12 +55,20 @@ func (s *Store) Close() {
 }
 
 func (s *Store) Migrate(ctx context.Context) error {
-	sqlBytes, err := migrationFS.ReadFile("migrations/001_users.sql")
-	if err != nil {
-		return err
+	for _, name := range []string{
+		"migrations/001_users.sql",
+		"migrations/002_app_run_mode.sql",
+		"migrations/003_app_mode_flags.sql",
+	} {
+		sqlBytes, err := migrationFS.ReadFile(name)
+		if err != nil {
+			return err
+		}
+		if _, err := s.pool.Exec(ctx, string(sqlBytes)); err != nil {
+			return err
+		}
 	}
-	_, err = s.pool.Exec(ctx, string(sqlBytes))
-	return err
+	return nil
 }
 
 func (s *Store) CountUsers(ctx context.Context) (int64, error) {
@@ -80,41 +95,82 @@ func (s *Store) GetUserByUsername(ctx context.Context, username string) (*User, 
 	return &u, nil
 }
 
-func (s *Store) GetAppEnabled(ctx context.Context, stem string) (bool, bool, error) {
-	var enabled bool
-	err := s.pool.QueryRow(ctx, `SELECT enabled FROM app_preferences WHERE stem = $1`, stem).Scan(&enabled)
+func (s *Store) GetAppPreference(ctx context.Context, stem string) (AppPreference, bool, error) {
+	var pref AppPreference
+	err := s.pool.QueryRow(ctx, `
+		SELECT local_enabled, docker_enabled, public_enabled
+		FROM app_preferences WHERE stem = $1
+	`, stem).Scan(&pref.LocalEnabled, &pref.DockerEnabled, &pref.PublicEnabled)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return false, false, nil
+			return AppPreference{}, false, nil
 		}
-		return false, false, err
+		return AppPreference{}, false, err
 	}
-	return enabled, true, nil
+	return pref, true, nil
 }
 
-func (s *Store) SetAppEnabled(ctx context.Context, stem string, enabled bool) error {
+func (s *Store) SetModeEnabled(ctx context.Context, stem string, mode runmode.Mode, enabled bool) error {
+	pref, _, err := s.GetAppPreference(ctx, stem)
+	if err != nil {
+		return err
+	}
+	switch mode {
+	case runmode.Local:
+		pref.LocalEnabled = enabled
+	case runmode.LocalDocker:
+		pref.DockerEnabled = enabled
+	case runmode.Server:
+		pref.PublicEnabled = enabled
+	default:
+		return errors.New("invalid mode")
+	}
+	return s.SetAppPreference(ctx, stem, pref)
+}
+
+func (s *Store) SetAppPreference(ctx context.Context, stem string, pref AppPreference) error {
+	legacyMode := runmode.Default()
+	legacyEnabled := false
+	if pref.PublicEnabled {
+		legacyMode = runmode.Server
+		legacyEnabled = true
+	} else if pref.DockerEnabled {
+		legacyMode = runmode.LocalDocker
+		legacyEnabled = true
+	} else if pref.LocalEnabled {
+		legacyMode = runmode.Local
+		legacyEnabled = true
+	}
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO app_preferences (stem, enabled, updated_at)
-		VALUES ($1, $2, NOW())
-		ON CONFLICT (stem) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = NOW()
-	`, stem, enabled)
+		INSERT INTO app_preferences (stem, local_enabled, docker_enabled, public_enabled, enabled, run_mode, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, NOW())
+		ON CONFLICT (stem) DO UPDATE SET
+			local_enabled = EXCLUDED.local_enabled,
+			docker_enabled = EXCLUDED.docker_enabled,
+			public_enabled = EXCLUDED.public_enabled,
+			enabled = EXCLUDED.enabled,
+			run_mode = EXCLUDED.run_mode,
+			updated_at = NOW()
+	`, stem, pref.LocalEnabled, pref.DockerEnabled, pref.PublicEnabled, legacyEnabled, string(legacyMode))
 	return err
 }
 
-func (s *Store) ListAppPreferences(ctx context.Context) (map[string]bool, error) {
-	rows, err := s.pool.Query(ctx, `SELECT stem, enabled FROM app_preferences`)
+func (s *Store) ListAppPreferences(ctx context.Context) (map[string]AppPreference, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT stem, local_enabled, docker_enabled, public_enabled FROM app_preferences
+	`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	out := map[string]bool{}
+	out := map[string]AppPreference{}
 	for rows.Next() {
 		var stem string
-		var enabled bool
-		if err := rows.Scan(&stem, &enabled); err != nil {
+		var pref AppPreference
+		if err := rows.Scan(&stem, &pref.LocalEnabled, &pref.DockerEnabled, &pref.PublicEnabled); err != nil {
 			return nil, err
 		}
-		out[stem] = enabled
+		out[stem] = pref
 	}
 	return out, rows.Err()
 }

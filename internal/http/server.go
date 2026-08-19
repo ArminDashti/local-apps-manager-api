@@ -8,6 +8,7 @@ import (
 	"github.com/ArminDashti/local-apps-manager-api/internal/apps"
 	"github.com/ArminDashti/local-apps-manager-api/internal/auth"
 	"github.com/ArminDashti/local-apps-manager-api/internal/config"
+	"github.com/ArminDashti/local-apps-manager-api/internal/runmode"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 )
@@ -88,7 +89,8 @@ func (s *Server) getApps(c *gin.Context) {
 }
 
 type patchAppRequest struct {
-	Enabled bool `json:"enabled"`
+	Enabled *bool   `json:"enabled"`
+	RunMode *string `json:"runMode"`
 }
 
 func (s *Server) patchApp(c *gin.Context) {
@@ -102,7 +104,20 @@ func (s *Server) patchApp(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request"})
 		return
 	}
-	if err := s.appsSvc.SetEnabled(c.Request.Context(), stem, req.Enabled); err != nil {
+	if req.Enabled == nil || req.RunMode == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "enabled and runMode required"})
+		return
+	}
+	update := apps.UpdateRequest{Enabled: req.Enabled}
+	if req.RunMode != nil {
+		mode, err := runmode.Parse(*req.RunMode)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		update.RunMode = &mode
+	}
+	if err := s.appsSvc.UpdateApp(c.Request.Context(), stem, update); err != nil {
 		if strings.Contains(err.Error(), "already in progress") {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 			return

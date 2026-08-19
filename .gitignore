@@ -2,3 +2,6 @@ bin/
 .env
 .armin/docker-data/
 *.exe
+
+# auto-managed large files (>5MB)
+

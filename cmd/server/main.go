@@ -34,8 +34,12 @@ func main() {
 		log.Fatalf("seed default user: %v", err)
 	}
 
-	run := runner.New(cfg.DockerRunnerScript, cfg.GitHubRoot)
-	appsSvc := apps.NewService(cfg, db, run)
+	flight := runner.NewFlight()
+	native := runner.NewNativeRunner(cfg.NativeRunnerScript, cfg.NativeAppsConfig)
+	docker := runner.NewDockerRunner(cfg.DockerRunnerScript, cfg.GitHubRoot)
+	server := runner.NewServerRunner()
+	router := runner.NewRouter(native, docker, server, flight)
+	appsSvc := apps.NewService(cfg, db, router)
 	srv := httpserver.New(cfg, authSvc, appsSvc)
 
 	httpServer := &http.Server{

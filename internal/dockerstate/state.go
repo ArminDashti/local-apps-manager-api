@@ -1,6 +1,7 @@
 package dockerstate
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"os/exec"
@@ -36,9 +37,10 @@ func ReadState(path string) (*StateFile, error) {
 		}
 		return nil, err
 	}
+	data = bytes.TrimPrefix(data, []byte{0xEF, 0xBB, 0xBF})
 	var state StateFile
 	if err := json.Unmarshal(data, &state); err != nil {
-		return nil, err
+		return &StateFile{Pairs: []StateRow{}}, nil
 	}
 	return &state, nil
 }

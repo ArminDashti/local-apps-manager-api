@@ -23,6 +23,7 @@ type Pair struct {
 	WebUiStack        string
 	ApiInternalPort   int
 	WebUiInternalPort int
+	HasServerDeploy   bool
 }
 
 func FindPairs(root string) ([]Pair, error) {
@@ -73,9 +74,58 @@ func FindPairs(root string) ([]Pair, error) {
 		if p.WebUiDir != "" {
 			p.WebUiInternalPort = resolveInternalPort(p.WebUiDir, 80)
 		}
+		p.HasServerDeploy = hasServerDeploy(p)
 		pairs = append(pairs, p)
 	}
 	return pairs, nil
+}
+
+func hasServerDeploy(p Pair) bool {
+	if !serverDeployReady(p.ApiDir) {
+		return false
+	}
+	if p.Combined || p.WebUiDir == "" {
+		return true
+	}
+	// Separate WebUI stack: optional but recommended. Require API at minimum;
+	// if WebUI has docker-scripts folder, require it to be valid too.
+	webuiScriptDir := filepath.Join(p.WebUiDir, ".armin", "docker-scripts")
+	if _, err := os.Stat(webuiScriptDir); err != nil {
+		return true // API-only server deploy is enough for HasServerDeploy
+	}
+	return serverDeployReady(p.WebUiDir)
+}
+
+func serverDeployReady(projectDir string) bool {
+	if projectDir == "" {
+		return false
+	}
+	script := filepath.Join(projectDir, ".armin", "docker-scripts", "run-on-docker-server.ps1")
+	yamlPath := filepath.Join(projectDir, ".armin", "docker-scripts", "run-on-docker-server.yaml")
+	if _, err := os.Stat(script); err != nil {
+		return false
+	}
+	data, err := os.ReadFile(yamlPath)
+	if err != nil {
+		return false
+	}
+	ssh, volume := "", ""
+	for _, raw := range strings.Split(string(data), "\n") {
+		line := strings.TrimSpace(raw)
+		if strings.HasPrefix(line, "ssh:") {
+			ssh = strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "ssh:")), `"'`)
+		}
+		if strings.HasPrefix(line, "volume_dir:") {
+			volume = strings.Trim(strings.TrimSpace(strings.TrimPrefix(line, "volume_dir:")), `"'`)
+		}
+	}
+	if ssh == "" || strings.Contains(ssh, "<") {
+		return false
+	}
+	if volume == "" || strings.Contains(volume, "<") {
+		return false
+	}
+	return true
 }
 
 func resolveProductionPlan(p *Pair) {
