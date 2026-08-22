@@ -35,7 +35,7 @@ func main() {
 	}
 
 	flight := runner.NewFlight()
-	native := runner.NewNativeRunner(cfg.NativeRunnerScript, cfg.NativeAppsConfig)
+	native := runner.NewNativeRunner(cfg.NativeRunnerScript, cfg.NativeAppsConfig, cfg.NativeHotReloadScript)
 	docker := runner.NewDockerRunner(cfg.DockerRunnerScript, cfg.GitHubRoot)
 	server := runner.NewServerRunner()
 	router := runner.NewRouter(native, docker, server, flight)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"github.com/ArminDashti/local-apps-manager-api/internal/config"
 	"github.com/ArminDashti/local-apps-manager-api/internal/discover"
@@ -151,6 +152,25 @@ func (s *Service) buildRow(
 	}
 	dockerApiURL = urlOrPort(externalHost, dockerApiPort, dockerApiURL)
 	dockerWebuiURL = urlOrPort(externalHost, dockerWebuiPort, dockerWebuiURL)
+
+	// Prefer local-docker-hot-reload project ports / pc-armin URL when that stack is up.
+	localProj := dockerstate.LocalProjectName(p.Stem)
+	if projects[localProj] {
+		lpApi, lpWeb := dockerstate.HostPortsForProject(localProj)
+		if lpApi > 0 {
+			dockerApiPort = lpApi
+			dockerApiURL = urlOrPort(externalHost, lpApi, "")
+		}
+		if lpWeb > 0 {
+			dockerWebuiPort = lpWeb
+		}
+		if s.cfg.PcArminBase != "" {
+			dockerWebuiURL = strings.TrimRight(s.cfg.PcArminBase, "/") + "/" + p.Stem + "/"
+		} else if lpWeb > 0 {
+			dockerWebuiURL = urlOrPort(externalHost, lpWeb, "")
+		}
+		onDocker = true
+	}
 	dockerStatus := "Down"
 	if modeUp(dockerWebuiPort, s.cfg.HostIP, false) == "UP" ||
 		modeUp(dockerApiPort, s.cfg.HostIP, dockerWebuiPort == 0) == "UP" ||
@@ -241,7 +261,7 @@ func (s *Service) UpdateApp(ctx context.Context, stem string, req UpdateRequest)
 	if pair == nil {
 		return fmt.Errorf("app not found: %s", stem)
 	}
-	if mode == runmode.LocalDocker && pair.SkipReason != "" {
+	if mode == runmode.LocalDocker && pair.SkipReason != "" && pair.LocalCompose == "" {
 		return fmt.Errorf("cannot use docker for %s: %s", stem, pair.SkipReason)
 	}
 	if mode == runmode.Server && !pair.HasServerDeploy {

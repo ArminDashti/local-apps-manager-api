@@ -18,9 +18,11 @@ type Config struct {
 	DockerRunnerScript  string
 	NativeRunnerScript  string
 	NativeStatePath     string
-	NativeAppsConfig    string
-	ServerSSHTimeoutSec int
-	HostIP              string
+	NativeAppsConfig       string
+	NativeHotReloadScript  string
+	ServerSSHTimeoutSec    int
+	HostIP                 string
+	PcArminBase            string
 }
 
 func Load() Config {
@@ -38,7 +40,9 @@ func Load() Config {
 		NativeStatePath:     getenv("NATIVE_STATE_PATH", "C:/Users/armin/.cursor/plugins/local/devops-by-armin/skills/run-all-apps-locally/.run-listed-apps-state.json"),
 		NativeAppsConfig:    getenv("NATIVE_APPS_CONFIG", "C:/Users/armin/.cursor/plugins/local/devops-by-armin/skills/run-all-apps-locally/apps.yaml"),
 		ServerSSHTimeoutSec: getenvInt("SERVER_SSH_TIMEOUT_SEC", 300),
-		HostIP:              getenv("HOST_IP", "127.0.0.1"),
+		HostIP:                 getenv("HOST_IP", "127.0.0.1"),
+		NativeHotReloadScript:  getenv("NATIVE_HOT_RELOAD_SCRIPT", "C:/Users/armin/.cursor/plugins/local/devops-by-armin/skills/local-hot-reload/scripts/Run-LocalHotReloadPair.ps1"),
+		PcArminBase:            getenv("PC_ARMIN_BASE", "http://pc-armin"),
 	}
 }
 

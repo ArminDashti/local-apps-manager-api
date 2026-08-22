@@ -24,6 +24,7 @@ type Pair struct {
 	ApiInternalPort   int
 	WebUiInternalPort int
 	HasServerDeploy   bool
+	LocalCompose      string
 }
 
 func FindPairs(root string) ([]Pair, error) {
@@ -128,10 +129,33 @@ func serverDeployReady(projectDir string) bool {
 	return true
 }
 
+func findLocalCompose(dir string) string {
+	if dir == "" {
+		return ""
+	}
+	for _, name := range []string{
+		"docker-compose.local.yml",
+		"docker-compose.local.yaml",
+		"compose.local.yml",
+		"compose.local.yaml",
+	} {
+		path := filepath.Join(dir, name)
+		if _, err := os.Stat(path); err == nil {
+			return path
+		}
+	}
+	return ""
+}
+
 func resolveProductionPlan(p *Pair) {
+	p.LocalCompose = findLocalCompose(p.ApiDir)
 	apiBase := findBaseCompose(p.ApiDir)
 	uiBase := findBaseCompose(p.WebUiDir)
 	if apiBase == "" {
+		if p.LocalCompose != "" {
+			// local-docker-hot-reload compose is enough for Docker mode
+			return
+		}
 		p.SkipReason = "API production docker-compose missing"
 		return
 	}
@@ -141,6 +165,9 @@ func resolveProductionPlan(p *Pair) {
 		return
 	}
 	if uiBase == "" {
+		if p.LocalCompose != "" {
+			return
+		}
 		p.SkipReason = "WebUI production docker-compose missing"
 		return
 	}

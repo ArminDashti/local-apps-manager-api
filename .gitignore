@@ -5,3 +5,7 @@ bin/
 
 # auto-managed large files (>5MB)
 
+# github-commit-push-all: large files (>5MB) — auto-managed
+
+.armin/docker-data/postgres/pg_wal/000000010000000000000001
+

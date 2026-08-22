@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 )
 
@@ -72,7 +73,14 @@ func RunningProjects() (map[string]bool, error) {
 	return projects, nil
 }
 
+func LocalProjectName(stem string) string {
+	return stem + "-local"
+}
+
 func OnDocker(stem, apiStack, webUiStack string, projects map[string]bool) bool {
+	if projects[LocalProjectName(stem)] {
+		return true
+	}
 	if projects[apiStack] {
 		return true
 	}
@@ -91,4 +99,62 @@ func OnDocker(stem, apiStack, webUiStack string, projects map[string]bool) bool 
 		}
 	}
 	return false
+}
+
+
+// HostPortsForProject returns published host ports for api/webui-ish services in a compose project.
+func HostPortsForProject(project string) (apiPort, webuiPort int) {
+	if project == "" {
+		return 0, 0
+	}
+	out, err := exec.Command(
+		"docker", "ps",
+		"--filter", "label=com.docker.compose.project="+project,
+		"--format", "{{.Label \"com.docker.compose.service\"}}\t{{.Ports}}",
+	).Output()
+	if err != nil {
+		return 0, 0
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		svc := strings.ToLower(parts[0])
+		hostPort := firstHostPort(parts[1])
+		if hostPort == 0 {
+			continue
+		}
+		switch {
+		case strings.Contains(svc, "web"), strings.Contains(svc, "ui"), strings.Contains(svc, "frontend"), svc == "vite":
+			if webuiPort == 0 {
+				webuiPort = hostPort
+			}
+		case strings.Contains(svc, "api"), strings.Contains(svc, "backend"), strings.Contains(svc, "server"), svc == "app":
+			if apiPort == 0 {
+				apiPort = hostPort
+			}
+		}
+	}
+	return apiPort, webuiPort
+}
+
+func firstHostPort(portsField string) int {
+	for _, chunk := range strings.Split(portsField, ", ") {
+		chunk = strings.TrimSpace(chunk)
+		if !strings.Contains(chunk, "->") {
+			continue
+		}
+		left := strings.Split(chunk, "->")[0]
+		if i := strings.LastIndex(left, ":"); i >= 0 {
+			if n, err := strconv.Atoi(left[i+1:]); err == nil {
+				return n
+			}
+		}
+	}
+	return 0
 }
